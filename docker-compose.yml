@@ -1,0 +1,150 @@
+version: "3.8"
+
+networks:
+  public:
+
+services:
+  vpn:
+    image: dperson/openvpn-client
+    container_name: vpn
+    cap_add:
+      - net_admin
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp
+    restart: unless-stopped
+    security_opt:
+      - label:disable
+    tty: true
+    volumes:
+      - /dev/net:/dev/net:z
+      - /mnt/openvpn:/vpn
+    networks:
+      - public
+    command: ["-f", " "]
+    # Put .ovpn configuration file in the /vpn directory (in "volumes:" above or
+    # launch using the command line arguments, IE pick one:
+    #  - ./vpn:/vpn
+    # command: 'server;user;password[;port]'
+
+  portainer:
+    image: portainer/portainer
+    container_name: portainer
+    network_mode: "service:vpn"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+      - UMASK_SET=022 #optional
+    volumes:
+     - "/var/run/docker.sock:/var/run/docker.sock"
+
+  radarr:
+    image: linuxserver/radarr
+    container_name: radarr
+    network_mode: "service:vpn"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+      - UMASK_SET=022 #optional
+    volumes:
+      - /mnt/radarr/:/config
+      - /mnt/Downloads:/movies
+      - /mnt/Downloads:/downloads
+    restart: unless-stopped
+
+  headphones:
+    image: linuxserver/headphones
+    container_name: headphones
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+    volumes:
+      - /mnt/headphones:/config
+      - /mnt/Downloads:/downloads
+      - /mnt/Downloads:/music
+    ports:
+      - 8181:8181
+    restart: unless-stopped
+
+  sonarr:
+    image: linuxserver/sonarr
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+      - UMASK_SET=022 #optional
+    volumes:
+      - /mnt/sonarr:/config
+      - /mnt/Downloads:/tv
+      - /mnt/Downloads:/downloads
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+ 
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    network_mode: "service:vpn"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+      - UMASK_SET=022 #optional
+    volumes:
+    - "/var/run/docker.sock:/var/run/docker.sock"
+
+  transmission:
+    image: linuxserver/transmission
+    container_name: transmission
+    network_mode: "service:vpn"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+      - TRANSMISSION_WEB_HOME=/combustion-release/ #optional
+      - USER=username #optional
+      - PASS=password #optional
+    volumes:
+      - /mnt/transmission:/config
+      - /mnt/Downloads:/downloads
+      - /mnt/Downloads:/watch
+    restart: unless-stopped
+
+  web:
+    image: dperson/nginx
+    container_name: web
+    depends_on:
+      - radarr
+      - transmission
+      - portainer
+    links:
+      - vpn:radarr
+      - vpn:transmission
+      - vpn:portainer
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+      - UMASK_SET=022 #optional
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp
+      - /var/cache/nginx
+    networks:
+      - public
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    command: > 
+     -w "http://radarr:7878;/radarr"
+     -w "http://transmission:9091/transmission;/transmission"
+     -w "http://portainer:9000;/portainer"
